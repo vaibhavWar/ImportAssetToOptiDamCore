@@ -48,6 +48,10 @@ public sealed class AssetImporter
         var fields = await _damClient.GetFieldsAsync(cancellationToken).ConfigureAwait(false);
         _logger.LogInformation("Retrieved {Count} DAM fields from CMP.", fields.Count);
 
+        var folders = await _damClient.GetFoldersAsync(cancellationToken).ConfigureAwait(false);
+        var foldersByPath = BuildFolderPathIndex(folders);
+        _logger.LogInformation("Retrieved {Count} DAM folders from CMP.", folders.Count);
+
         // Index fields by name for O(1) lookup. Names are matched case-insensitively.
         var fieldsByName = fields
             .Where(f => f.IsActive)
@@ -72,7 +76,7 @@ public sealed class AssetImporter
 
             try
             {
-                var entry = await ProcessRowAsync(row, imagesDir, fieldsByName, cancellationToken)
+                var entry = await ProcessRowAsync(row, imagesDir, fieldsByName, foldersByPath, cancellationToken)
                     .ConfigureAwait(false);
                 if (entry is not null)
                 {
@@ -137,6 +141,7 @@ public sealed class AssetImporter
         AssetImportRow row,
         string imagesDir,
         IReadOnlyDictionary<string, DamField> fieldsByName,
+        IReadOnlyDictionary<string, IReadOnlyList<DamFolder>> foldersByPath,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(row.OldFileName))
@@ -145,13 +150,7 @@ public sealed class AssetImporter
         }
 
         var filePath = Path.Combine(imagesDir, row.OldFileName);
-        var folderId = row.ResolveFolderId() ?? _importOptions.DefaultFolderId;
-        if (string.IsNullOrWhiteSpace(folderId))
-        {
-            throw new InvalidOperationException(
-                "No valid folder GUID found on the row and no DefaultFolderId configured. " +
-                "Set Import:DefaultFolderId or supply a GUID in one of the folder columns.");
-        }
+        var folderId = ResolveFolderId(row, foldersByPath);
 
         // 1. Get a pre-signed upload URL.
         var uploadInfo = await _damClient.GetUploadUrlAsync(cancellationToken).ConfigureAwait(false);
@@ -175,6 +174,7 @@ public sealed class AssetImporter
             Description     = row.Description,
             AltText         = isImage ? row.AltText : null,
             AttributionText = isImage ? null : row.AltText, // mirror legacy fallback for non-image types
+            Tags            = isImage ? ParseTags(row.Tags) : null,
             IsPublic        = true,
             IsArchived      = false,
         };
@@ -202,6 +202,218 @@ public sealed class AssetImporter
             NewFileName:   title!,
             PublicDamUrl:  publicUrl,
             PrivateDamUrl: privateUrl);
+    }
+
+    private string ResolveFolderId(
+        AssetImportRow row,
+        IReadOnlyDictionary<string, IReadOnlyList<DamFolder>> foldersByPath)
+    {
+        var guidFolderId = row.ResolveFolderId();
+        if (!string.IsNullOrWhiteSpace(guidFolderId))
+        {
+            return guidFolderId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(row.DamFolderPath))
+        {
+            foreach (var lookupKey in GetFolderPathLookupKeys(row.DamFolderPath))
+            {
+                if (!foldersByPath.TryGetValue(lookupKey, out var matches))
+                {
+                    continue;
+                }
+
+                if (matches.Count == 1)
+                {
+                    _logger.LogInformation(
+                        "Resolved DAM Folder Path '{InputPath}' to folder '{ResolvedPath}' ({FolderId}).",
+                        row.DamFolderPath, lookupKey, matches[0].Id);
+                    return matches[0].Id;
+                }
+
+                var duplicatePaths = string.Join(", ", matches.Select(folder => $"{folder.Name} ({folder.Id})"));
+                throw new InvalidOperationException(
+                    $"DAM Folder Path '{row.DamFolderPath}' matched multiple folders: {duplicatePaths}. " +
+                    "Use a full, unique DAM path or set DAMFolderGuid.");
+            }
+
+            var knownPaths = string.Join(" | ", foldersByPath.Keys.OrderBy(path => path).Take(20));
+            _logger.LogWarning(
+                "DAM Folder Path '{InputPath}' was not found. Known folder path keys sample: {KnownPaths}",
+                row.DamFolderPath, knownPaths);
+
+            throw new InvalidOperationException(
+                $"DAM Folder Path '{row.DamFolderPath}' was not found in Optimizely DAM. " +
+                "Use the complete path shown by DAM, for example 'Assets/Folder/Subfolder'.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(_importOptions.DefaultFolderId))
+        {
+            return _importOptions.DefaultFolderId;
+        }
+
+        throw new InvalidOperationException(
+            "No DAM Folder Path, valid folder GUID, or DefaultFolderId was supplied. " +
+            "Set DAMFolderGuid, set DAM Folder Path, or configure Import:DefaultFolderId.");
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<DamFolder>> BuildFolderPathIndex(
+        IReadOnlyList<DamFolder> folders)
+    {
+        var foldersById = folders
+            .Where(folder => !string.IsNullOrWhiteSpace(folder.Id))
+            .GroupBy(folder => folder.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+        var index = new Dictionary<string, List<DamFolder>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var folder in folders)
+        {
+            foreach (var path in GetFolderIndexPaths(folder, foldersById))
+            {
+                foreach (var lookupKey in GetFolderPathLookupKeys(path))
+                {
+                    AddFolderIndexEntry(index, lookupKey, folder);
+                }
+            }
+        }
+
+        return index.ToDictionary(
+            kvp => kvp.Key,
+            kvp => (IReadOnlyList<DamFolder>)kvp.Value,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<string> GetFolderIndexPaths(
+        DamFolder folder,
+        IReadOnlyDictionary<string, DamFolder> foldersById)
+    {
+        if (!string.IsNullOrWhiteSpace(folder.Path))
+        {
+            yield return folder.Path;
+        }
+
+        var pathFromParents = BuildFolderPathFromParents(folder, foldersById);
+        if (!string.IsNullOrWhiteSpace(pathFromParents))
+        {
+            yield return pathFromParents;
+        }
+    }
+
+    private static string? BuildFolderPathFromParents(
+        DamFolder folder,
+        IReadOnlyDictionary<string, DamFolder> foldersById)
+    {
+        var segments = new Stack<string>();
+        var current = folder;
+        var visitedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (true)
+        {
+            if (string.IsNullOrWhiteSpace(current.Name) || !visitedIds.Add(current.Id))
+            {
+                break;
+            }
+
+            segments.Push(current.Name);
+
+            if (string.IsNullOrWhiteSpace(current.ParentFolderId) ||
+                !foldersById.TryGetValue(current.ParentFolderId, out var parent))
+            {
+                break;
+            }
+
+            current = parent;
+        }
+
+        return segments.Count == 0 ? null : string.Join('/', segments);
+    }
+
+    private static void AddFolderIndexEntry(
+        IDictionary<string, List<DamFolder>> index,
+        string lookupKey,
+        DamFolder folder)
+    {
+        if (string.IsNullOrWhiteSpace(lookupKey))
+        {
+            return;
+        }
+
+        if (!index.TryGetValue(lookupKey, out var matches))
+        {
+            matches = new List<DamFolder>();
+            index[lookupKey] = matches;
+        }
+
+        if (!matches.Any(existing => string.Equals(existing.Id, folder.Id, StringComparison.OrdinalIgnoreCase)))
+        {
+            matches.Add(folder);
+        }
+    }
+
+    private static IReadOnlyList<string> GetFolderPathLookupKeys(string? path)
+    {
+        var normalized = NormalizeDamFolderPath(path);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return Array.Empty<string>();
+        }
+
+        var keys = new List<string> { normalized };
+        var withoutAssetsRoot = RemoveLeadingPathSegment(normalized, "Assets");
+        if (!string.Equals(withoutAssetsRoot, normalized, StringComparison.OrdinalIgnoreCase))
+        {
+            keys.Add(withoutAssetsRoot);
+        }
+
+        return keys
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string RemoveLeadingPathSegment(string path, string segmentToRemove)
+    {
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length == 0 ||
+            !string.Equals(segments[0], segmentToRemove, StringComparison.OrdinalIgnoreCase))
+        {
+            return path;
+        }
+
+        return string.Join('/', segments.Skip(1));
+    }
+
+    private static string NormalizeDamFolderPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return string.Empty;
+        }
+
+        var segments = path
+            .Replace('\\', '/')
+            .Replace('>', '/')
+            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(segment => !string.IsNullOrWhiteSpace(segment));
+
+        return string.Join('/', segments);
+    }
+
+    private static IReadOnlyList<string>? ParseTags(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        var tags = raw
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return tags.Count == 0 ? null : tags;
     }
 
     private static IReadOnlyList<AssetFieldValue> BuildFieldValues(

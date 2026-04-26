@@ -20,3 +20,12 @@ public sealed record DamField(
 
 public sealed record DamFieldsResponse(
     [property: JsonPropertyName("data")] IReadOnlyList<DamField> Data);
+
+public sealed record DamFolder(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("parent_folder_id")] string? ParentFolderId,
+    [property: JsonPropertyName("path")] string? Path);
+
+public sealed record DamFoldersResponse(
+    [property: JsonPropertyName("data")] IReadOnlyList<DamFolder> Data);

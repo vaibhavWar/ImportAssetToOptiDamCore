@@ -47,6 +47,74 @@ public sealed class OptimizelyDamClient : IOptimizelyDamClient
         return response?.Data ?? Array.Empty<DamField>();
     }
 
+    public async Task<IReadOnlyList<DamFolder>> GetFoldersAsync(CancellationToken cancellationToken = default)
+    {
+        var foldersById = new Dictionary<string, DamFolder>(StringComparer.OrdinalIgnoreCase);
+        var parentIdsToRead = new Queue<string?>();
+        var visitedParentIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        parentIdsToRead.Enqueue(null);
+
+        while (parentIdsToRead.Count > 0)
+        {
+            var parentFolderId = parentIdsToRead.Dequeue();
+            var visitKey = parentFolderId ?? "<root>";
+            if (!visitedParentIds.Add(visitKey))
+            {
+                continue;
+            }
+
+            var page = await GetFoldersForParentAsync(parentFolderId, cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (var folder in page)
+            {
+                if (foldersById.TryAdd(folder.Id, folder))
+                {
+                    parentIdsToRead.Enqueue(folder.Id);
+                }
+            }
+        }
+
+        return foldersById.Values.ToList();
+    }
+
+    private async Task<IReadOnlyList<DamFolder>> GetFoldersForParentAsync(
+        string? parentFolderId,
+        CancellationToken cancellationToken)
+    {
+        var folders = new List<DamFolder>();
+        var pageSize = _options.FoldersPageSize;
+
+        for (var offset = 0; ; offset += pageSize)
+        {
+            var path = $"/{_options.ApiVersion}/folders?offset={offset}&page_size={pageSize}";
+            if (!string.IsNullOrWhiteSpace(parentFolderId))
+            {
+                path += $"&parent_folder_id={Uri.EscapeDataString(parentFolderId)}";
+            }
+
+            var response = await _httpClient
+                .GetFromJsonAsync<DamFoldersResponse>(path, SerializerOptions, cancellationToken)
+                .ConfigureAwait(false);
+
+            var page = response?.Data ?? Array.Empty<DamFolder>();
+            if (page.Count == 0)
+            {
+                break;
+            }
+
+            folders.AddRange(page);
+
+            if (page.Count < pageSize)
+            {
+                break;
+            }
+        }
+
+        return folders;
+    }
+
     public async Task<UploadUrlResponse> GetUploadUrlAsync(CancellationToken cancellationToken = default)
     {
         var path = $"/{_options.ApiVersion}/upload-url";

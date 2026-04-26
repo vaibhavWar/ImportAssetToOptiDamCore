@@ -47,11 +47,7 @@ appsettings.*.Local.json
 .DS_Store
 Thumbs.db
 
-## User-uploaded assets / runtime inputs (keep folders, ignore contents)
-ImportAssetToOptiDam/Images/*
-!ImportAssetToOptiDam/Images/.gitkeep
-ImportAssetToOptiDam/ExcelSheet/*
-!ImportAssetToOptiDam/ExcelSheet/.gitkeep
+
 
 ## Generated upload reports
 ImportAssetToOptiDam/Output/*

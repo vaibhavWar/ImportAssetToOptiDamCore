@@ -40,4 +40,7 @@ public sealed class OptimizelyCmpOptions
 
     [Range(1, 500)]
     public int FieldsPageSize { get; init; } = 100;
+
+    [Range(1, 100)]
+    public int FoldersPageSize { get; init; } = 100;
 }

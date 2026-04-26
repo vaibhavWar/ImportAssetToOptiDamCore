@@ -10,6 +10,8 @@ public interface IOptimizelyDamClient
 {
     Task<IReadOnlyList<DamField>> GetFieldsAsync(CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<DamFolder>> GetFoldersAsync(CancellationToken cancellationToken = default);
+
     Task<UploadUrlResponse> GetUploadUrlAsync(CancellationToken cancellationToken = default);
 
     Task UploadFileToStorageAsync(

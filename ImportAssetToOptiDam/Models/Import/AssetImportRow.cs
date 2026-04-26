@@ -11,35 +11,38 @@ public sealed record AssetImportRow
     /// <summary>1-based index of the source row in the spreadsheet (for error messages).</summary>
     public int SourceRowNumber { get; init; }
 
-    public string? SourceLink { get; init; }
+    public string? SourceFolderPath { get; init; }
     public string? OldFileName { get; init; }
     public string? NewFileName { get; init; }
-    public string? ParentFolder { get; init; }
-    public string? Subfolder { get; init; }
-    public string? Subfolder2 { get; init; }
-    public string? Subfolder3 { get; init; }
+    public string? DamFolderGuid { get; init; }
+    public string? DamFolderPath { get; init; }
     public string? Description { get; init; }
     public string? AltText { get; init; }
+    public string? Tags { get; init; }
 
     /// <summary>
-    /// All columns by header name → cell value. Used when resolving custom DAM fields.
+    /// All columns by header name to cell value. Used when resolving custom DAM fields.
     /// </summary>
     public IReadOnlyDictionary<string, string?> CustomFieldValues { get; init; }
         = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Returns the first sub-folder-like value that parses as a GUID,
-    /// walking deepest → shallowest. Returns null if none are valid GUIDs.
+    /// Returns the DAM folder GUID from the spreadsheet, or null when the column is empty.
     /// </summary>
     public string? ResolveFolderId()
     {
-        foreach (var candidate in new[] { Subfolder3, Subfolder2, Subfolder, ParentFolder })
+        if (string.IsNullOrWhiteSpace(DamFolderGuid))
         {
-            if (!string.IsNullOrWhiteSpace(candidate) && Guid.TryParse(candidate.Trim(), out _))
-            {
-                return candidate.Trim();
-            }
+            return null;
         }
-        return null;
+
+        var candidate = DamFolderGuid.Trim();
+        if (Guid.TryParse(candidate, out _))
+        {
+            return candidate;
+        }
+
+        throw new InvalidOperationException(
+            $"DAMFolderGuid value '{DamFolderGuid}' is not a valid GUID.");
     }
 }

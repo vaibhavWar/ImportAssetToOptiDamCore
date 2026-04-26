@@ -19,15 +19,15 @@ public sealed partial class OpenXmlAssetImportReader : IAssetImportReader
     private static readonly IReadOnlyDictionary<string, string> KnownHeaderMap =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["SourceLink"]    = nameof(AssetImportRow.SourceLink),
-            ["OldFileName"]   = nameof(AssetImportRow.OldFileName),
-            ["NewFileName"]   = nameof(AssetImportRow.NewFileName),
-            ["ParentFolder"]  = nameof(AssetImportRow.ParentFolder),
-            ["Subfolder"]     = nameof(AssetImportRow.Subfolder),
-            ["Subfolder2"]    = nameof(AssetImportRow.Subfolder2),
-            ["Subfolder3"]    = nameof(AssetImportRow.Subfolder3),
-            ["Description"]   = nameof(AssetImportRow.Description),
-            ["AltText"]       = nameof(AssetImportRow.AltText),
+            ["SourceLink"]       = nameof(AssetImportRow.SourceFolderPath),
+            ["SourceFolderPath"] = nameof(AssetImportRow.SourceFolderPath),
+            ["OldFileName"]      = nameof(AssetImportRow.OldFileName),
+            ["NewFileName"]      = nameof(AssetImportRow.NewFileName),
+            ["DAMFolderGuid"]    = nameof(AssetImportRow.DamFolderGuid),
+            ["DAMFolderPath"]    = nameof(AssetImportRow.DamFolderPath),
+            ["Description"]      = nameof(AssetImportRow.Description),
+            ["AltText"]          = nameof(AssetImportRow.AltText),
+            ["Tags"]             = nameof(AssetImportRow.Tags),
         };
 
     private readonly ILogger<OpenXmlAssetImportReader> _logger;
@@ -127,15 +127,14 @@ public sealed partial class OpenXmlAssetImportReader : IAssetImportReader
         return new AssetImportRow
         {
             SourceRowNumber    = dataRowNumber,
-            SourceLink         = fixedValue(nameof(AssetImportRow.SourceLink)),
+            SourceFolderPath   = fixedValue(nameof(AssetImportRow.SourceFolderPath)),
             OldFileName        = fixedValue(nameof(AssetImportRow.OldFileName)),
             NewFileName        = fixedValue(nameof(AssetImportRow.NewFileName)),
-            ParentFolder       = fixedValue(nameof(AssetImportRow.ParentFolder)),
-            Subfolder          = fixedValue(nameof(AssetImportRow.Subfolder)),
-            Subfolder2         = fixedValue(nameof(AssetImportRow.Subfolder2)),
-            Subfolder3         = fixedValue(nameof(AssetImportRow.Subfolder3)),
+            DamFolderGuid      = fixedValue(nameof(AssetImportRow.DamFolderGuid)),
+            DamFolderPath      = fixedValue(nameof(AssetImportRow.DamFolderPath)),
             Description        = fixedValue(nameof(AssetImportRow.Description)),
             AltText            = fixedValue(nameof(AssetImportRow.AltText)),
+            Tags               = fixedValue(nameof(AssetImportRow.Tags)),
             CustomFieldValues  = custom,
         };
     }

@@ -151,15 +151,19 @@ whitespace-insensitive):
 
 | Header          | Purpose                                                 |
 | --------------- | ------------------------------------------------------- |
-| `SourceLink`    | Originating URL — informational                         |
+| `Source Folder Path` | Originating source folder path (preferred; legacy `SourceLink` is also accepted) |
+| `SourceLink`    | Legacy alias for `Source Folder Path`                   |
 | `OldFileName`   | File name on disk under `Images/` — **required**        |
 | `NewFileName`   | Title given to the asset in DAM                         |
-| `ParentFolder`  | DAM folder GUID, checked shallowest → deepest           |
-| `Subfolder`     | Optional sub-folder GUID                                |
-| `Subfolder2`    | Optional                                                |
-| `Subfolder3`    | Optional — the deepest valid GUID wins                  |
+| `DAMFolderGuid` | DAM folder GUID; used before `DAM Folder Path` when populated |
+| `DAM Folder Path` | Complete DAM folder path, for example `Assets/TestFolderForDAMAutomation/VWTest` |
 | `Description`   | Patched onto the asset                                  |
 | `AltText`       | Patched onto the asset (alt text for images)            |
+| `Tags`          | Comma-separated image tags, for example `hero,web`      |
+
+When `DAMFolderGuid` is populated, the importer uses that GUID directly. If it
+is empty, `DAM Folder Path` is resolved to the DAM folder GUID through
+`GET /v3/folders` and used when creating the asset.
 
 **Any other header** is matched by name against the DAM's configured custom
 fields. If a matching field exists and is active, the cell value is applied;
