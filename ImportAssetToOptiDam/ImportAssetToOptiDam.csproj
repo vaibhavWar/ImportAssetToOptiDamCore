@@ -9,8 +9,10 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RootNamespace>ImportAssetToOptiDam</RootNamespace>
     <AssemblyName>ImportAssetToOptiDam</AssemblyName>
+    <Version>1.0.1</Version>
     <UserSecretsId>ImportAssetToOptiDam-20260422</UserSecretsId>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,6 +33,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Update="ExcelSheet\ImportAssetToOptiDam.xlsx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <Pack>true</Pack>
+      <PackagePath>contentFiles\any\any\</PackagePath>
+    </None>
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
